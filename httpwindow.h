@@ -54,6 +54,8 @@
 #include <QProgressDialog>
 #include <QNetworkAccessManager>
 #include <QUrl>
+#include <QDir>
+#include <QHash>
 
 QT_BEGIN_NAMESPACE
 class QFile;
@@ -98,7 +100,7 @@ private slots:
 #endif
 
 private:
-    QFile *openFileForWrite(const QString &fileName);
+    void openFileForWrite(const QUrl& url);
 
     QLabel *statusLabel;
     QLineEdit *urlLineEdit;
@@ -111,6 +113,8 @@ private:
     QNetworkAccessManager qnam;
     QNetworkReply *reply;
     QFile *file;
+    QDir dir;
+    QHash<const QUrl, QFile*> files;
     bool httpRequestAborted;
 };
 

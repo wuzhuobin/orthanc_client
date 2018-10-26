@@ -52,6 +52,8 @@
 #include <QtNetwork>
 #include <QUrl>
 #include <QDebug>
+#include <QRegularExpression>
+#include <QDateTime>
 
 #include "httpwindow.h"
 #include "ui_authenticationdialog.h"
@@ -167,6 +169,13 @@ void HttpWindow::startRequest(const QUrl &requestedUrl)
 
 void HttpWindow::downloadFile()
 {
+    this->dir = QDir::current();
+    QString folderName = QDateTime::currentDateTime().toString("hhmmssdddMMMyyyy");
+    if(!this->dir.mkpath("temp/" + folderName)){
+        qCritical() << "Create path failed. ";
+        return;
+    }
+    this->dir.cd("temp/" + folderName);
     QStringList urlStringList = this->urlLineEdit->text().split(";");
     for(QStringList::iterator it = urlStringList.begin(); it != urlStringList.end(); ++it){
         *it = it->trimmed();
@@ -174,21 +183,26 @@ void HttpWindow::downloadFile()
         if(!url.isValid()){
             continue;
         }
+        this->openFileForWrite(url);
         this->startRequest(url);
     }
 }
 
-QFile *HttpWindow::openFileForWrite(const QString &fileName)
+void HttpWindow::openFileForWrite(const QUrl &url)
 {
-    QScopedPointer<QFile> file(new QFile(fileName));
-    if (!file->open(QIODevice::WriteOnly)) {
-        QMessageBox::information(this, tr("Error"),
-                                 tr("Unable to save the file %1: %2.")
-                                 .arg(QDir::toNativeSeparators(fileName),
-                                      file->errorString()));
-        return Q_NULLPTR;
+    QRegularExpression regex("instances/(?<id>[a-z0-9]{8}-[a-z0-9]{8}-[a-z0-9]{8}-[a-z0-9]{8}-[a-z0-9]{8})/file");
+    QRegularExpressionMatch match = regex.match(url.toString());
+    if(!match.hasMatch()){
+        qCritical() << "The url is not correct";
+        return;
     }
-    return file.take();
+    QString fileName = match.captured("id") + ".dcm";
+    QFile *file = new QFile(this->dir.path() + "/" + fileName);
+    if(!file->open(QIODevice::WriteOnly)){
+        qCritical() << "File: " << fileName << "open failed. ";
+        return;
+    }
+    files.insert(url, file);
 }
 
 void HttpWindow::cancelDownload()
@@ -205,6 +219,14 @@ void HttpWindow::httpFinished()
     if(rep->error()){
         qCritical() << rep->error();
     }
+    QUrl url = rep->url();
+    QFile *file = this->files.take(url);
+    if(file != nullptr){
+        file->close();
+        delete file;
+    }
+
+
     rep->deleteLater();
     return;
 
@@ -236,22 +258,22 @@ void HttpWindow::httpFinished()
     reply->deleteLater();
     reply = Q_NULLPTR;
 
-    if (!redirectionTarget.isNull()) {
-        const QUrl redirectedUrl = url.resolved(redirectionTarget.toUrl());
-        if (QMessageBox::question(this, tr("Redirect"),
-                                  tr("Redirect to %1 ?").arg(redirectedUrl.toString()),
-                                  QMessageBox::Yes | QMessageBox::No) == QMessageBox::No) {
-            downloadButton->setEnabled(true);
-            return;
-        }
-        file = openFileForWrite(fi.absoluteFilePath());
-        if (!file) {
-            downloadButton->setEnabled(true);
-            return;
-        }
-        startRequest(redirectedUrl);
-        return;
-    }
+    // if (!redirectionTarget.isNull()) {
+    //     const QUrl redirectedUrl = url.resolved(redirectionTarget.toUrl());
+    //     if (QMessageBox::question(this, tr("Redirect"),
+    //                               tr("Redirect to %1 ?").arg(redirectedUrl.toString()),
+    //                               QMessageBox::Yes | QMessageBox::No) == QMessageBox::No) {
+    //         downloadButton->setEnabled(true);
+    //         return;
+    //     }
+    //     file = openFileForWrite(fi.absoluteFilePath());
+    //     if (!file) {
+    //         downloadButton->setEnabled(true);
+    //         return;
+    //     }
+    //     startRequest(redirectedUrl);
+    //     return;
+    // }
 
     statusLabel->setText(tr("Downloaded %1 bytes to %2\nin\n%3")
                          .arg(fi.size()).arg(fi.fileName(), QDir::toNativeSeparators(fi.absolutePath())));
@@ -267,10 +289,14 @@ void HttpWindow::httpReadyRead()
     // That way we use less RAM than when reading it at the finished()
     // signal of the QNetworkReply
     QNetworkReply *rep = reinterpret_cast<QNetworkReply*>(this->sender());
-    qDebug() << rep->url();
-    // if (file)
-    //     file->write(reply->readAll());
-    
+    QUrl url = rep->url();
+    QFile *file = this->files.value(url); 
+    if(file == nullptr || !file->isOpen()){
+        qCritical() << "The url " << url << 
+            "cannot write to file " << file->fileName();
+        return;
+    }
+    file->write(rep->readAll());
 }
 
 void HttpWindow::enableDownloadButton()
