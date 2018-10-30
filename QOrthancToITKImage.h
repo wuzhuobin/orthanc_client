@@ -4,10 +4,6 @@
 class QOrthancToITKImagePrivate;
 // Qt
 #include <QObject>
-#include <QDir>
-class QFile;
-#include <QHash>
-#include <QURL>
 class QOrthancToITKImage final: public QObject
 {
     Q_OBJECT;
@@ -16,10 +12,11 @@ public:
     void setUrls(QStringList urls);
     void setUrls(QString url);
     void request();
-    void waitForResponded();
     void abort();
+    void waitForResponded();
+    void responded(bool &finished);
 Q_SIGNALS:
-    void responded();
+    void responded(QStringList fileNames);
 private:
     QOrthancToITKImagePrivate *d_ptr;
     Q_DECLARE_PRIVATE(QOrthancToITKImage);

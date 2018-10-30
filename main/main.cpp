@@ -48,21 +48,27 @@
 **
 ****************************************************************************/
 
-#include <QApplication>
-#include <QDesktopWidget>
-#include <QDir>
-
-#include "httpwindow.h"
+#include <QCoreApplication>
+#include <QDebug>
+#include "QOrthancToITKImage.h"
 
 int main(int argc, char *argv[])
 {
-    QApplication app(argc, argv);
+    QCoreApplication app(argc, argv);
 
-    HttpWindow httpWin;
-    const QRect availableSize = QApplication::desktop()->availableGeometry(&httpWin);
-    httpWin.resize(availableSize.width() / 5, availableSize.height() / 5);
-    httpWin.move((availableSize.width() - httpWin.width()) / 2, (availableSize.height() - httpWin.height()) / 2);
+    QOrthancToITKImage ob;
+    QObject::connect(&ob, static_cast<void (QOrthancToITKImage::*)(QStringList)>(&QOrthancToITKImage::responded), [](QStringList fileNames) {
+        qDebug() << fileNames;
+        qDebug() << "finished. ";
+    });
+    ob.setUrls(QStringList{
+        "http://223.255.146.2:8042/orthanc/instances/593b7f4f-a6a19241-e255c4be-3e9fef2c-6d8f96a8/file", 
+        "http://223.255.146.2:8042/orthanc/instances/29741f8f-453e2f9f-097eeb39-87bb72c1-a5f05ac9/file", 
+        "http://223.255.146.2:8042/orthanc/instances/8e3e2a0f-070f8cd2-4b58aae8-2af45099-1c4f69e6/file", 
+    });
+    ob.request();
 
-    httpWin.show();
+
     return app.exec();
 }
+
