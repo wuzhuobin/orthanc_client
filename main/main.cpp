@@ -1,74 +1,46 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+#include <boost/asio.hpp>
+#include <array>
+#include <string>
+#include <iostream>
+using namespace boost::asio;
+using namespace boost::asio::ip;
 
-#include <QCoreApplication>
-#include <QDebug>
-#include "QOrthancToITKImage.h"
+io_service ioservice;
+tcp::resolver resolv{ioservice};
+tcp::socket tcp_socket{ioservice};
+std::array<char, 4096> bytes;
 
-int main(int argc, char *argv[])
+void read_handler(const boost::system::error_code &ec,
+  std::size_t bytes_transferred)
 {
-    QCoreApplication app(argc, argv);
-
-    QOrthancToITKImage ob;
-    QObject::connect(&ob, static_cast<void (QOrthancToITKImage::*)(QStringList)>(&QOrthancToITKImage::responded), [](QStringList fileNames) {
-        qDebug() << fileNames;
-        qDebug() << "finished. ";
-    });
-    ob.setUrls(QStringList{
-        "http://223.255.146.2:8042/orthanc/instances/593b7f4f-a6a19241-e255c4be-3e9fef2c-6d8f96a8/file", 
-        "http://223.255.146.2:8042/orthanc/instances/29741f8f-453e2f9f-097eeb39-87bb72c1-a5f05ac9/file", 
-        "http://223.255.146.2:8042/orthanc/instances/8e3e2a0f-070f8cd2-4b58aae8-2af45099-1c4f69e6/file", 
-    });
-    ob.request();
-
-
-    return app.exec();
+  if (!ec)
+  {
+    std::cout.write(bytes.data(), bytes_transferred);
+    tcp_socket.async_read_some(buffer(bytes), read_handler);
+  }
 }
 
+void connect_handler(const boost::system::error_code &ec)
+{
+  if (!ec)
+  {
+    std::string r =
+      "GET / HTTP/1.1\r\nHost: theboostcpplibraries.com\r\n\r\n";
+    write(tcp_socket, buffer(r));
+    tcp_socket.async_read_some(buffer(bytes), read_handler);
+  }
+}
+
+void resolve_handler(const boost::system::error_code &ec,
+  tcp::resolver::iterator it)
+{
+  if (!ec)
+    tcp_socket.async_connect(*it, connect_handler);
+}
+
+int main()
+{
+  tcp::resolver::query q{"223.255.146.2", "8042"};
+  resolv.async_resolve(q, resolve_handler);
+  ioservice.run();
+}
