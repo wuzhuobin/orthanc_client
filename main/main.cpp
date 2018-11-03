@@ -1,46 +1,37 @@
-#include <boost/asio.hpp>
-#include <array>
-#include <string>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/io_service.hpp>
+
+// std
 #include <iostream>
-using namespace boost::asio;
-using namespace boost::asio::ip;
-
-io_service ioservice;
-tcp::resolver resolv{ioservice};
-tcp::socket tcp_socket{ioservice};
-std::array<char, 4096> bytes;
-
-void read_handler(const boost::system::error_code &ec,
-  std::size_t bytes_transferred)
+// #include <string>
+boost::asio::io_service io_service;
+void connect_handler(const boost::system::error_code& error)
 {
-  if (!ec)
+  if (error)
   {
-    std::cout.write(bytes.data(), bytes_transferred);
-    tcp_socket.async_read_some(buffer(bytes), read_handler);
+    std::cerr << "Error: " << error.category().name() << " " << error.value() << '\n';
   }
+
 }
 
-void connect_handler(const boost::system::error_code &ec)
+void resolve_handler(const boost::system::error_code &error, boost::asio::ip::tcp::resolver::results_type results)
 {
-  if (!ec)
+  if (error)
   {
-    std::string r =
-      "GET / HTTP/1.1\r\nHost: theboostcpplibraries.com\r\n\r\n";
-    write(tcp_socket, buffer(r));
-    tcp_socket.async_read_some(buffer(bytes), read_handler);
+    std::cerr << "Error: " << error.category().name() << " " << error.value() << '\n';
   }
+  boost::asio::ip::tcp::socket socket(io_service);
+  socket.async_connect(*results, connect_handler);
 }
 
-void resolve_handler(const boost::system::error_code &ec,
-  tcp::resolver::iterator it)
+int main(int argc, char **argv)
 {
-  if (!ec)
-    tcp_socket.async_connect(*it, connect_handler);
-}
+  // boost::asio::ip::tcp::resolver()
+  boost::asio::ip::tcp::resolver resolver(io_service);
+  boost::asio::ip::tcp::socket socket(io_service);
 
-int main()
-{
-  tcp::resolver::query q{"223.255.146.2", "8042"};
-  resolv.async_resolve(q, resolve_handler);
-  ioservice.run();
+  resolver.async_resolve("223.255.146.2", "8042", resolve_handler);
+  io_service.run();
+  std::cin.get();
+  return 1;
 }
