@@ -2,7 +2,8 @@
 #define __ORTHANC_CLIENT_H__
 #pragma once
 #include <string>
-#include <boost/smart_ptr/shared_ptr.hpp>
+#include <memory>
+// #include <boost/smart_ptr/shared_ptr.hpp>
 namespace boost{
 namespace asio{
     class io_context;
@@ -30,8 +31,8 @@ private:
     std::string server;
     std::string port;
     std::string path;
-    boost::shared_ptr<boost::asio::io_context> io_context;
-    boost::shared_ptr<orthanc_client_private> p;
+    std::shared_ptr<boost::asio::io_context> io_context;
+    std::shared_ptr<orthanc_client_private> p;
     friend struct orthanc_client_private;
 };
 
