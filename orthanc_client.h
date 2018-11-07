@@ -7,15 +7,6 @@
 namespace boost{
 namespace asio{
     class io_context;
-namespace system{
-    class error_code;
-}
-namespace ip{
-// namespace tcp{
-//     class resolver;
-//     class socket;
-// }    
-}
 }
 }
 struct orthanc_client_private;
@@ -24,15 +15,15 @@ class orthanc_client
 public:
   orthanc_client(
       const std::string &server,
-      const std::string &port,
-      const std::string &path);
+      const std::string &port);
+    void method_GET(const std::string &path);
 private:
 
     std::string server;
     std::string port;
     std::string path;
     std::shared_ptr<boost::asio::io_context> io_context;
-    std::shared_ptr<orthanc_client_private> p;
+    std::shared_ptr<orthanc_client_private> this_p;
     friend struct orthanc_client_private;
 };
 

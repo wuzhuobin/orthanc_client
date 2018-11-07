@@ -8,6 +8,7 @@
 // #include <boost/asio/streambuf.hpp>
 // #include <boost/asio/write.hpp>
 #include <boost/asio.hpp>
+#include <boost/filesystem.hpp>
 // boost bind 
 #include <boost/bind.hpp>
 #include <boost/system/error_code.hpp>
@@ -18,26 +19,6 @@ struct orthanc_client_private
         resolver(*self->io_context), 
         socket(*self->io_context)
     {
-        this->resolver.async_resolve(self->server, self->port, 
-            boost::bind(&orthanc_client_private::handle_resolve,
-            this, 
-            boost::asio::placeholders::error, 
-            boost::asio::placeholders::results)
-        );
-        std::ostream os(&request);
-        os << "GET " << self->path << " HTTP/1.1\r\n";
-        os << "Host: " << self->server << ":" << self->port << "\r\n";
-        // os << "Accept: application/dicom\r\n";
-        os << "Accept: */*\r\n";
-        // os << "Connection: close\r\n";
-        os << "\r\n";
-
-        std::cerr << "GET " << self->path << " HTTP/1.1\r\n";
-        std::cerr << "Host: " << self->server << ":" << self->port << "\r\n";
-        // std::cerr << "Accept: application/dicom\r\n";
-        std::cerr << "Accept: */*\r\n";
-        std::cerr << "Connection: close\r\n";
-        std::cerr << "\r\n";
     }
     void handle_resolve(
         const boost::system::error_code &error, 
@@ -49,12 +30,6 @@ struct orthanc_client_private
                 error.message() << ' ' << error.value() << '\n';
             return;
         }
-        // std::cerr << "server: " << this->self->server << '\n';
-        // std::cerr << "port: " << this->self->port << '\n';
-        // std::cerr << "path:" << this->self->path << '\n';
-        // boost::asio::async_connect(this->socket, results.begin(), results.end(),
-        //     boost::bind(&orthanc_client_private::handle_connect, this, 
-        //         boost::asio::placeholders::error)
         boost::asio::async_connect(this->socket, results,
             boost::bind(&orthanc_client_private::handle_connect, this, 
                 boost::asio::placeholders::error)
@@ -69,10 +44,6 @@ struct orthanc_client_private
                 error.message() << ' ' << error.value() << '\n';
             return;
         }
-        // this->socket.async_write_some(this->request, 
-        //     boost::bind(&orthanc_client_private::handle_request, this, 
-        //     boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)
-        // );
         boost::asio::async_write(this->socket, this->request, 
             boost::bind(&orthanc_client_private::handle_request, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)
         );
@@ -80,30 +51,50 @@ struct orthanc_client_private
 
     void handle_request(const boost::system::error_code &error, const std::size_t &bytes)
     {
-        if(error){
+        if (error)
+        {
             std::cerr << "Error: " << error.category().name() << ' ' <<
                 error.message() << ' ' << error.value() << '\n';
             return;
         }
-        // boost::asio::async_read(this->socket, this->response,
-        //     boost::bind(&orthanc_client_private::handle_response, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)
-        // );
-        boost::asio::async_read_until(this->socket, this->response, "\r\n",
-                                      boost::bind(&orthanc_client_private::handle_response, this,
-                                                  boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+        boost::asio::async_read_until(this->socket, this->response, "\r\n\r\n",
+            boost::bind(&orthanc_client_private::handle_response, this,
+                boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
     }
-    
+
     void handle_response(const boost::system::error_code &error, const std::size_t &bytes)
     {
-        if(error){
+        if(!error)
+        {
+            const char *data = static_cast<const char *>(this->response.data().data());
+            std::string header(bytes, '\0');
+            std::istream is(&this->response);
+            is.read(const_cast<char*>(header.data()), bytes);
+            if(header.substr(9, 3) != "200")
+            {
+                std::cerr << "Reponse status is not 200.\n" << header << '\n'; 
+                return;
+            }
+            boost::asio::async_read(this->socket, this->response,
+                boost::bind(&orthanc_client_private::handle_response, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)
+            );
+        }
+        else if(error == boost::asio::error::eof)
+        {
+            // hendle content
+            boost::filesystem::path temp = boost::filesystem::current_path() += "/temp";
+            boost::filesystem::create_directory(temp);
+            boost::filesystem::path dcm = temp;
+            dcm += self->path;
+            boost::filesystem::ofstream out(dcm, boost::filesystem::ofstream::out);
+            out << &this->response;
+            out.close();
+        }
+        else
+        {
             std::cerr << "Error: " << error.category().name() << ' ' <<
                 error.message() << ' ' << error.value() << '\n';
-            return;
         }
-        std::cerr << &response;
-        // boost::asio::async_read(this->socket, this->response,
-        //     boost::bind(&orthanc_client_private::handle_response, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)
-        // );
     }
 
     orthanc_client *self;
@@ -115,15 +106,29 @@ struct orthanc_client_private
 
 orthanc_client::orthanc_client(
     const std::string &server, 
-    const std::string &port,
-    const std::string &path) :
+    const std::string &port) :
     server(server),
     port(port),
-    path(path),
     io_context(new boost::asio::io_context),
-    p(new orthanc_client_private(this))
+    this_p(new orthanc_client_private(this))
 {
-   std::cerr << "Before run. \n";  
-   this->io_context->run();
-   std::cerr << "Running. \n";
+}
+
+void orthanc_client::method_GET(const std::string &path)
+{
+    this->path = path;
+    std::ostream os(&this_p->request);
+    os << "GET " << this->path << " HTTP/1.1\r\n";
+    os << "Host: " << this->server << ":" << this->port << "\r\n";
+    os << "Accept: */*\r\n";
+    os << "Connection: close\r\n";
+    os << "\r\n";
+    std::cerr << static_cast<const char*>(this_p->request.data().data());
+    this_p->resolver.async_resolve(this->server, this->port, 
+        boost::bind(&orthanc_client_private::handle_resolve,
+        this_p, 
+        boost::asio::placeholders::error, 
+        boost::asio::placeholders::results)
+    );
+    this->io_context->run();
 }

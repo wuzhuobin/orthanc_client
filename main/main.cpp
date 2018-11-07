@@ -3,7 +3,9 @@
 #include <iostream>
 int main(int argc, char *argv[])
 {
-  orthanc_client client("223.255.146.2", "8042", "/orthanc/instances");
+  orthanc_client client("223.255.146.2", "8042");
+  client.method_GET("/orthanc/instances/593b7f4f-a6a19241-e255c4be-3e9fef2c-6d8f96a8/file");
+  // client.run();
   // orthanc_client client("theboostcpplibraries.com", "80", '/');
   std::cin.get();
   return EXIT_SUCCESS;

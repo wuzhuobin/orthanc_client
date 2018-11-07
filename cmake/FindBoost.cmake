@@ -1,4 +1,4 @@
-find_package(Boost REQUIRED COMPONENTS system date_time regex)
+find_package(Boost REQUIRED COMPONENTS system date_time regex filesystem)
 list(
     APPEND
     PROJECT_LIBRARY
